@@ -7,7 +7,6 @@ const config = require('./config');
 const bot = new Telegraf(process.env.TOKEN)
 
 
-//сделай обработчик ошибки который не пропускает ошибку в консоль и сохраняет её в файл error.log
 bot.catch((err, ctx) => {
     console.error('error', err)
     ctx.reply('Произошла ошибка', { reply_to_message_id: ctx.message.message_id });
