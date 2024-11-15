@@ -6,6 +6,7 @@ const config = require('./config');
 
 const bot = new Telegraf(process.env.TOKEN)
 
+
 //сделай обработчик ошибки который не пропускает ошибку в консоль и сохраняет её в файл error.log
 bot.catch((err, ctx) => {
     console.error('error', err)
@@ -148,94 +149,109 @@ bot.command('help', (ctx) => {
 
 const channelId = '@ifydevnews';
 const discordWebhookUrl = 'https://discord.com/api/webhooks/1306859560966950942/WkhfJN14_PU3tZrWJnPkkcYwdbstF9FgY3j0Iz6l4L4X3jz95xFIGHPIrA1sBvsKdoVi';
-const authorizedUserId = 1084019563;
 
-// Функция для отправки изображения на Discord с текстом
-function sendImageToDiscord(imageUrl, textMessage, ctx) {
-    const postData = JSON.stringify({
-      content: textMessage, // Добавляем текст
-      embeds: [{
-        image: {
-          url: imageUrl
-        }
-      }]
-    });
+const axios = require('axios');
+
+// Функция для отправки сообщения на Discord
+async function sendMessageToDiscord(textMessage, imageUrl) {
+  try {
+    // Создаем данные для запроса
+    const postData = {
+      content: textMessage, // Текстовое сообщение
+    };
+
+    // Если есть картинка, добавляем её в embeds
+    if (imageUrl) {
+      postData.embeds = [
+        {
+          image: {
+            url: imageUrl, // Ссылка на картинку
+          },
+        },
+      ];
+    }
   
-    const url = new URL(discordWebhookUrl);
-    const options = {
-      hostname: url.hostname,
-      port: 443,
-      path: url.pathname + url.search,
-      method: 'POST',
+    // Убедимся, что URL для вебхука правильный
+    const url = discordWebhookUrl;  // Webhook URL, который ты должен подставить
+    const res = await axios.post(url, postData, {
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(postData)
-      }
-    };
-  
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-  
-      res.on('end', () => {
-        console.log('Ответ от Discord:', data);
-        ctx.reply('Изображение и текст успешно отправлены в канал и на Discord.');
-      });
+      },
     });
-  
-    req.on('error', (error) => {
-      console.error('Ошибка при отправке в Discord:', error);
-      ctx.reply('Ошибка при отправке изображения на Discord.');
-    });
-  
-    req.write(postData);
-    req.end();
+
+    // Если статус ответа 204, значит запрос прошел успешно
+    if (res.status === 204) {
+    } else {
+      throw new Error(`Ошибка при отправке сообщения на Discord. Статус: ${res.status}`);
+    }
+  } catch (error) {
+    throw new Error('Ошибка при отправке сообщения на Discord.');
   }
-  
-  // Команда для отправки сообщений
-  bot.command('sendnews', (ctx) => {
-    // Проверяем, авторизован ли пользователь
-    if (ctx.from.id !== authorizedUserId) {
-      return ctx.reply('У вас нет доступа к этой команде.');
-    }
-  
-    // Извлекаем текст из команды
-    const messageText = ctx.message.text.slice(12).trim(); // Оставляем только текст после "/sendmessage "
-    
-    // Проверка на формат ссылки и текста
-    const linkRegex = /-\((https?:\/\/[^\s]+)\)/;  // Регулярное выражение для ссылки внутри "-()"
-    const match = messageText.match(linkRegex);
-    
-    if (!match) {
-      return ctx.reply('Ошибка: Пожалуйста, дополните команду изображением или сообщением в формуте /sendnews -({ссылка}) или /sendnews -({ссылка}) <текст> или /sendnews {текст}');
-    }
-  
-    // Извлекаем ссылку на картинку и текст
-    const imageUrl = match[1];
-    const textMessage = messageText.replace(linkRegex, '').trim();  // Убираем ссылку, оставляем текст
-  
-    if (!textMessage) {
-      return ctx.reply('Ошибка: Пожалуйста, добавьте текст сообщения после ссылки на картинку.');
-    }
-  
-    // 1. Отправляем картинку в Telegram-канал с текстом
-    bot.telegram.sendPhoto(channelId, imageUrl, { caption: textMessage })
-      .then(() => {
-        console.log('Изображение успешно отправлено в Telegram');
-  
-        // 2. Отправляем картинку и текст на Discord через вебхук
-        sendImageToDiscord(imageUrl, textMessage, ctx);
-      })
-      .catch((error) => {
-        console.error('Ошибка при отправке изображения в Telegram:', error);
-        ctx.reply('Ошибка при отправке изображения в Telegram.');
-      });
-  });
+}
 
+// Команда для отправки сообщений с картинкой и текстом
+bot.command('sendnews', async (ctx) => {
+  // Проверяем, авторизован ли пользователь
+  if (!config.ownersid.includes(ctx.from.id)) {
+    return ctx.reply('У вас нет доступа к этой команде.');
+  }
 
+  // Извлекаем текст из команды
+  const messageText = ctx.message.text.slice(9).trim(); // Оставляем только текст после "/sendnews "
 
+  // Проверяем, если текст пустой, то просим пользователя добавить текст или картинку
+  if (!messageText) {
+    return ctx.reply('Ошибка: Пожалуйста, добавьте текст или ссылку на картинку после команды /sendnews.');
+  }
+
+  // Регулярное выражение для ссылки на картинку в формате -(<ссылка>)
+  const linkRegex = /-\((https?:\/\/[^\s]+)\)/;
+  const match = messageText.match(linkRegex);
+
+  try {
+    let imageUrl = '';
+    let textMessage = messageText;
+
+    // Если есть ссылка на картинку, извлекаем её
+    if (match) {
+      imageUrl = match[1];
+      textMessage = messageText.replace(linkRegex, '').trim();  // Убираем ссылку, оставляем текст
+
+      if (!textMessage) {
+        return ctx.reply('Ошибка: Пожалуйста, добавьте текст сообщения после ссылки на картинку.');
+      }
+    }
+
+    // 1. Если есть картинка, отправляем её с текстом в Telegram
+    if (imageUrl) {
+      if (textMessage) { // Проверка, что текст не пустой
+        await bot.telegram.sendPhoto(channelId, imageUrl, { caption: textMessage });
+      } else {
+        return ctx.reply('Ошибка: Текст сообщения не может быть пустым.');
+      }
+    } else {
+      // Если картинки нет, отправляем только текст, но проверяем, что текст не пустой
+      if (textMessage) {
+        await bot.telegram.sendMessage(channelId, textMessage);
+      } else {
+        return ctx.reply('Ошибка: Текст сообщения не может быть пустым.');
+      }
+    }
+
+    // 2. Отправляем сообщение на Discord с картинкой (если есть)
+    if (textMessage) { // Проверка, что текст не пустой
+      await sendMessageToDiscord(textMessage, imageUrl);
+    } else {
+      return ctx.reply('Ошибка: Текст сообщения не может быть пустым.');
+    }
+
+    // 3. Ответ пользователю после успешной отправки в оба канала
+    ctx.reply('Сообщение успешно отправлено в Telegram и на Discord.');
+  } catch (error) {
+    console.error('Ошибка:', error);
+    ctx.reply('Произошла ошибка при отправке сообщения в Telegram или Discord.');
+  }
+});
 bot.launch()
 process.once('SIGINT', () => bot.stop('SIGINT'))
 process.once('SIGTERM', () => bot.stop('SIGTERM'))
