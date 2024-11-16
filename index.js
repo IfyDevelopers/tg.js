@@ -5,19 +5,21 @@ const config = require('./config');
 const os = require('os');  
 const process = require('process'); 
 //const formatUptime = require('./modules/formatUptime.js')
+const axios = require('axios'); 
+const { performance } = require('perf_hooks'); 
 
 const bot = new Telegraf(process.env.TOKEN)
 
 
-bot.catch((err, ctx) => {
+bot.catch( async (err, ctx) => {
     console.error('error', err)
     ctx.reply('Произошла ошибка', { reply_to_message_id: ctx.message.message_id });
 }) 
 
 
-bot.start((ctx) => ctx.reply('Привет, используй команду /help для получения списка команд', { reply_to_message_id: ctx.message.message_id }))
-bot.hears('hi', (ctx) => ctx.reply('Привет, используй команду /help для получения списка команд', { reply_to_message_id: ctx.message.message_id }))
-bot.hears(/^бу(\s|$)/, (ctx) => {  // ^бу и дальше может идти только пробел или конец строки
+bot.start(async (ctx) => ctx.reply('Привет, используй команду /help для получения списка команд', { reply_to_message_id: ctx.message.message_id }))
+bot.hears('hi', async (ctx) => ctx.reply('Привет, используй команду /help для получения списка команд', { reply_to_message_id: ctx.message.message_id }))
+bot.hears(/^бу(\s|$)/, async (ctx) => {  // ^бу и дальше может идти только пробел или конец строки
   const messageText = ctx.message.text;
 
   // Ищем упоминание пользователя в сообщении
@@ -63,45 +65,51 @@ function formatUptime(uptimeInSeconds) {
   }
 
   
-  bot.command('info', async (ctx) => {
-      try {
-        // Получаем информацию о самом боте
-        const botInfo = await bot.telegram.getMe();
-        const botName = botInfo.first_name; 
-        const botUsername = botInfo.username; 
-  
-        // Получаем время работы бота
-        const uptime = formatUptime(process.uptime());
-  
-        // Получаем информацию о системе
-        const systemInfo = {
-          osType: os.type(),  // Тип ОС (например, 'Linux', 'Darwin' для macOS, 'Windows_NT' для Windows)
-          osPlatform: os.platform(),  // Платформа ОС (например, 'linux', 'win32', 'darwin' и т.д.)
-          osArch: os.arch(),  // Архитектура процессора (например, 'x64', 'arm')
-          osRelease: os.release(),  // Версия ОС (например, '5.4.0-42-generic')
-          nodeVersion: process.version,  // Версия Node.js (например, 'v16.13.0')
-        };
-  
-        // Формируем сообщение для отправки
-        const infoMessage = `
-  <b>Название бота</b>: ${botName} (@${botUsername})
-  <b>Версия</b>: ${config.version}
-  <b>Авторы</b>: ${config.authors.join(', ')}
-  <b>Сайт</b>: https://ifydev.ru/
-  <b>Время работы</b>: ${uptime}
-  <b>Операционная система</b>: ${systemInfo.osType} (${systemInfo.osPlatform})
-  <b>Версия ОС</b>: ${systemInfo.osRelease}
-  <b>Архитектура</b>: ${systemInfo.osArch}
-  <b>Версия Node.js</b>: ${systemInfo.nodeVersion}
-  `;
-  
-        // Отправляем сообщение с информацией
-        ctx.replyWithHTML(infoMessage, { reply_to_message_id: ctx.message.message_id });
-      } catch (error) {
-        console.error('Ошибка при получении информации о боте:', error);
-        ctx.reply('Ошибка при получении информации о боте.', { reply_to_message_id: ctx.message.message_id });
-      }
-  });
+
+
+
+bot.command('info', async (ctx) => {
+  try {
+    // Получаем информацию о самом боте
+    const botInfo = await bot.telegram.getMe();
+    const botName = botInfo.first_name;
+    const botUsername = botInfo.username;
+
+    // Получаем время работы бота
+    const uptime = formatUptime(process.uptime());
+
+    // Получаем информацию о системе
+    const systemInfo = {
+      osType: os.type(),  // Тип ОС (например, 'Linux', 'Darwin' для macOS, 'Windows_NT' для Windows)
+      osPlatform: os.platform(),  // Платформа ОС (например, 'linux', 'win32', 'darwin' и т.д.)
+      osArch: os.arch(),  // Архитектура процессора (например, 'x64', 'arm')
+      osRelease: os.release(),  // Версия ОС (например, '5.4.0-42-generic')
+      nodeVersion: process.version,  // Версия Node.js (например, 'v16.13.0')
+    };
+
+    // Формируем сообщение для отправки
+    const infoMessage = `
+<b>Название бота</b>: ${botName} (@${botUsername})
+<b>Версия</b>: ${config.version}
+<b>Авторы</b>: ${config.authors.join(', ')}
+<b>Сайт</b>: https://ifydev.ru/
+<b>Время работы</b>: ${uptime}
+<b>Версия Node.js</b>: ${systemInfo.nodeVersion}
+<b>Операционная система</b>: ${systemInfo.osType} (${systemInfo.osPlatform})
+<b>Версия ОС</b>: ${systemInfo.osRelease}
+<b>Архитектура</b>: ${systemInfo.osArch}
+`;
+
+    // Отправляем сообщение с информацией
+    await ctx.replyWithHTML(infoMessage, { reply_to_message_id: ctx.message.message_id });
+
+  } catch (error) {
+    console.error('Ошибка при получении информации о боте:', error);
+    ctx.reply('Ошибка при получении информации о боте.', { reply_to_message_id: ctx.message.message_id });
+  }
+});
+
+
 
   bot.command('avatar', async (ctx) => {
     let userId;
@@ -159,7 +167,7 @@ function formatUptime(uptimeInSeconds) {
 
 
 // Команда для генерации случайного числа в диапазоне
-bot.command('random', (ctx) => {
+bot.command('random', async (ctx) => {
     // Получаем аргументы из команды
     const args = ctx.message.text.split(' ').slice(1); // Разбиваем текст сообщения на массив и убираем команду
   
@@ -184,7 +192,7 @@ bot.command('random', (ctx) => {
     }
   });
 
-bot.command('help', (ctx) => {
+bot.command('help', async (ctx) => {
     ctx.replyWithHTML(`
 <b>Список команд:</b>
     /start - приветствие
@@ -206,7 +214,6 @@ bot.command('help', (ctx) => {
 const channelId = '@ifydevnews';
 const discordWebhookUrl = 'https://discord.com/api/webhooks/1306859560966950942/WkhfJN14_PU3tZrWJnPkkcYwdbstF9FgY3j0Iz6l4L4X3jz95xFIGHPIrA1sBvsKdoVi';
 
-const axios = require('axios');
 
 // Функция для отправки сообщения на Discord
 async function sendMessageToDiscord(textMessage, imageUrl) {
