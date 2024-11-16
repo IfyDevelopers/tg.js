@@ -7,9 +7,12 @@ const process = require('process');
 //const formatUptime = require('./modules/formatUptime.js')
 const axios = require('axios'); 
 const { performance } = require('perf_hooks'); 
+const Groq = require('groq-sdk');
+const fs = require('fs');
+const path = require('path');
 
 const bot = new Telegraf(process.env.TOKEN)
-
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 bot.catch( async (err, ctx) => {
     console.error('error', err)
@@ -49,9 +52,6 @@ bot.hears(/^бу(\s|$)/, async (ctx) => {  // ^бу и дальше может �
 });
   
 
-
-
-
 bot.command('boo', async (ctx) => {  // Реагирует только на команду "/бу"
   const messageText = ctx.message.text;
 
@@ -81,6 +81,120 @@ bot.command('boo', async (ctx) => {  // Реагирует только на к�
     });
   }
 });
+
+
+
+// Папка для хранения сообщений пользователей
+const messagesDir = path.join(__dirname, 'messages');
+
+// Убедимся, что папка существует
+if (!fs.existsSync(messagesDir)) {
+  fs.mkdirSync(messagesDir);
+}
+
+// Обработчик команды /ask
+bot.command('ask', async (ctx) => {
+  const userId = String(ctx.from.id);
+  const userMessage = ctx.message.text.slice(5).trim(); // Убираем '/ask ' из текста
+
+  if (!userMessage) {
+    return ctx.reply('Пожалуйста, укажите запрос после команды /ask.', {
+      reply_to_message_id: ctx.message.message_id, // Указываем, на какое сообщение отвечаем
+    });
+  }
+
+  // Получаем историю сообщений пользователя из файла
+  const conversation = await getUserMessages(userId);
+
+  // Проверка на количество сообщений
+  if (conversation.length / 2 >= config.maxMessagesPerUser) {  // Каждое сообщение пользователя и бота занимает 2 места
+    // Если сообщений больше, чем лимит, удаляем пары (пользователь + бот) с конца
+    while (conversation.length / 2 >= config.maxMessagesPerUser) {
+      conversation.shift();  // Удаляем пару сообщений: сначала пользователя, потом бот
+      conversation.shift();
+    }
+  }
+
+  // Добавляем новое сообщение пользователя в историю
+  conversation.push({ role: 'user', content: userMessage });
+
+  // Сохраняем обновлённую историю сообщений в файл
+  await saveUserMessages(userId, conversation);
+
+  try {
+    // Отправляем запрос в Groq API с учётом контекста
+    const chatCompletion = await getGroqChatCompletion(conversation);
+    const aiResponse = chatCompletion; // Ответ ИИ
+
+    // Добавляем ответ бота в историю
+    conversation.push({ role: 'assistant', content: aiResponse });
+
+    // Сохраняем обновленную историю сообщений в файл
+    await saveUserMessages(userId, conversation);
+
+    // Отправляем ответ пользователю, отвечая на его сообщение
+    ctx.reply(aiResponse, { reply_to_message_id: ctx.message.message_id });
+  } catch (error) {
+    console.error('Ошибка при получении ответа от Groq:', error);
+    ctx.reply('Произошла ошибка при обработке запроса. Попробуйте снова позже.', {
+      reply_to_message_id: ctx.message.message_id, // Указываем, на какое сообщение отвечаем
+    });
+  }
+});
+
+// Обработчик команды /reset
+bot.command('reset', async (ctx) => {
+  const userId = String(ctx.from.id);
+  const userFilePath = path.join(messagesDir, `${userId}.js`);
+
+  // Проверяем, существует ли файл с историей сообщений пользователя
+  if (fs.existsSync(userFilePath)) {
+    await fs.promises.unlink(userFilePath); // Удаляем файл
+    ctx.reply('Ваша история сообщений была очищена.', {
+      reply_to_message_id: ctx.message.message_id, // Указываем, на какое сообщение отвечаем
+    });
+  } else {
+    ctx.reply('Ваша история сообщений уже пуста.', {
+      reply_to_message_id: ctx.message.message_id, // Указываем, на какое сообщение отвечаем
+    });
+  }
+});
+
+// Функция для получения сообщений пользователя из файла
+async function getUserMessages(userId) {
+  const userFilePath = path.join(messagesDir, `${userId}.js`);
+
+  if (fs.existsSync(userFilePath)) {
+    const data = await fs.promises.readFile(userFilePath, 'utf8');
+    return JSON.parse(data).conversation || [];  // Возвращаем массив сообщений
+  }
+
+  // Если файла нет, возвращаем пустой массив
+  return [];
+}
+
+// Функция для сохранения сообщений пользователя и ответов ИИ в файл
+async function saveUserMessages(userId, conversation) {
+  const userFilePath = path.join(messagesDir, `${userId}.js`);
+  const data = { conversation };
+  await fs.promises.writeFile(userFilePath, JSON.stringify(data, null, 2));
+}
+
+// Функция для запроса к Groq API с учётом истории сообщений
+async function getGroqChatCompletion(conversation) {
+  try {
+    const response = await groq.chat.completions.create({
+      messages: conversation,
+      model: 'llama3-groq-70b-8192-tool-use-preview', // Обновленная модель
+    });
+
+    return response.choices[0]?.message?.content || 'Ответ не получен.';
+  } catch (error) {
+    console.error('Ошибка при запросе к Groq:', error);
+    return 'Ошибка при запросе к серверу. Попробуйте снова позже.';
+  }
+}
+
 
 
 
@@ -229,6 +343,8 @@ bot.command('help', async (ctx) => {
 <b>Список команд:</b>
     /start - приветствие
     /help - список команд
+    /ask - отправить запрос ии
+    /reset - очистить историю запросов ии
     /avatar - отправка аватара
     /random {x} {y} - генерация случайного числа
     /info - информация о боте
