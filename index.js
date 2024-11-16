@@ -15,8 +15,7 @@ bot.catch((err, ctx) => {
 
 bot.start((ctx) => ctx.reply('Привет, используй команду /help для получения списка команд', { reply_to_message_id: ctx.message.message_id }))
 bot.hears('hi', (ctx) => ctx.reply('Привет, используй команду /help для получения списка команд', { reply_to_message_id: ctx.message.message_id }))
-// Обработчик, когда встречается слово "бу"
-bot.hears(/бу/, (ctx) => {
+bot.hears(/^бу(\s|$)/, (ctx) => {  // ^бу и дальше может идти только пробел или конец строки
   const messageText = ctx.message.text;
 
   // Ищем упоминание пользователя в сообщении
@@ -33,7 +32,7 @@ bot.hears(/бу/, (ctx) => {
       reply_to_message_id: ctx.message.message_id
     });
   } else if (ctx.message.reply_to_message) {
-    // Если пинга нет, просто отвечаем на слово "бу"
+    // Если это ответ на сообщение, пингуем того, кто отправил это сообщение
     const userMention = ctx.message.reply_to_message.from.username || ctx.message.reply_to_message.from.first_name;
     ctx.reply(`@${userMention}, Бу! Испугался? Не бойся, я друг, я тебя не обижу. Иди сюда, иди ко мне, сядь рядом со мной, посмотри мне в глаза. Ты видишь меня? Я тоже тебя вижу. Давай смотреть друг на друга до тех пор, пока наши глаза не устанут. Ты не хочешь? Почему? Что-то не так?`, {
       reply_to_message_id: ctx.message.message_id
@@ -44,8 +43,6 @@ bot.hears(/бу/, (ctx) => {
     });
   }
 });
-
-
   
 function formatUptime(uptimeInSeconds) {
     const days = Math.floor(uptimeInSeconds / (3600 * 24));
