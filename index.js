@@ -2,6 +2,8 @@ const { Telegraf } = require('telegraf')
 const https = require('https');
 require('dotenv').config();
 const config = require('./config');
+const os = require('os');  
+const process = require('process'); 
 //const formatUptime = require('./modules/formatUptime.js')
 
 const bot = new Telegraf(process.env.TOKEN)
@@ -59,31 +61,46 @@ function formatUptime(uptimeInSeconds) {
   
     return uptimeString.trim();
   }
-bot.command('info', async (ctx) => {
-    try {
-      // Получаем информацию о самом боте
-      const botInfo = await bot.telegram.getMe();
-      const botName = botInfo.first_name; 
-      const botUsername = botInfo.username; 
-      
 
-      const uptime = formatUptime(process.uptime());
   
-
-      const infoMessage = `
-<b>Название бота</b>: ${botName} (@${botUsername})
-<b>Версия</b>: ${config.version}
-<b>Авторы</b>: ${config.authors.join(', ')}
-<b>Сайт: https://ifydev.ru/</b>
-<b>Время работы</b>: ${uptime}
-`;
-      
-
-      ctx.replyWithHTML(infoMessage, { reply_to_message_id: ctx.message.message_id });
-    } catch (error) {
-      console.error('Ошибка при получении информации о боте:', error);
-      ctx.reply('Ошибка при получении информации о боте.', { reply_to_message_id: ctx.message.message_id });
-    }
+  bot.command('info', async (ctx) => {
+      try {
+        // Получаем информацию о самом боте
+        const botInfo = await bot.telegram.getMe();
+        const botName = botInfo.first_name; 
+        const botUsername = botInfo.username; 
+  
+        // Получаем время работы бота
+        const uptime = formatUptime(process.uptime());
+  
+        // Получаем информацию о системе
+        const systemInfo = {
+          osType: os.type(),  // Тип ОС (например, 'Linux', 'Darwin' для macOS, 'Windows_NT' для Windows)
+          osPlatform: os.platform(),  // Платформа ОС (например, 'linux', 'win32', 'darwin' и т.д.)
+          osArch: os.arch(),  // Архитектура процессора (например, 'x64', 'arm')
+          osRelease: os.release(),  // Версия ОС (например, '5.4.0-42-generic')
+          nodeVersion: process.version,  // Версия Node.js (например, 'v16.13.0')
+        };
+  
+        // Формируем сообщение для отправки
+        const infoMessage = `
+  <b>Название бота</b>: ${botName} (@${botUsername})
+  <b>Версия</b>: ${config.version}
+  <b>Авторы</b>: ${config.authors.join(', ')}
+  <b>Сайт</b>: https://ifydev.ru/
+  <b>Время работы</b>: ${uptime}
+  <b>Операционная система</b>: ${systemInfo.osType} (${systemInfo.osPlatform})
+  <b>Версия ОС</b>: ${systemInfo.osRelease}
+  <b>Архитектура</b>: ${systemInfo.osArch}
+  <b>Версия Node.js</b>: ${systemInfo.nodeVersion}
+  `;
+  
+        // Отправляем сообщение с информацией
+        ctx.replyWithHTML(infoMessage, { reply_to_message_id: ctx.message.message_id });
+      } catch (error) {
+        console.error('Ошибка при получении информации о боте:', error);
+        ctx.reply('Ошибка при получении информации о боте.', { reply_to_message_id: ctx.message.message_id });
+      }
   });
 
   bot.command('avatar', async (ctx) => {
