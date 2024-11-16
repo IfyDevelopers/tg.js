@@ -14,7 +14,39 @@ bot.catch((err, ctx) => {
 
 
 bot.start((ctx) => ctx.reply('Привет, используй команду /help для получения списка команд', { reply_to_message_id: ctx.message.message_id }))
-bot.hears('hi', (ctx) => ctx.reply('Hey there', { reply_to_message_id: ctx.message.message_id }))
+bot.hears('hi', (ctx) => ctx.reply('Привет, используй команду /help для получения списка команд', { reply_to_message_id: ctx.message.message_id }))
+// Обработчик, когда встречается слово "бу"
+bot.hears(/бу/, (ctx) => {
+  const messageText = ctx.message.text;
+
+  // Ищем упоминание пользователя в сообщении
+  const pingPattern = /@([a-zA-Z0-9_]+)|https:\/\/t\.me\/([a-zA-Z0-9_]+)/;
+  const match = messageText.match(pingPattern);
+
+  // Если найдено упоминание пользователя, пингуем его в ответе
+  if (match) {
+    const username = match[1] || match[2]; // Получаем username
+    const userMention = `@${username}`;
+
+    // Отправляем ответ с пингом пользователя
+    ctx.reply(`${userMention}, Бу! Испугался? Не бойся, я друг, я тебя не обижу. Иди сюда, иди ко мне, сядь рядом со мной, посмотри мне в глаза. Ты видишь меня? Я тоже тебя вижу. Давай смотреть друг на друга до тех пор, пока наши глаза не устанут. Ты не хочешь? Почему? Что-то не так?`, {
+      reply_to_message_id: ctx.message.message_id
+    });
+  } else if (ctx.message.reply_to_message) {
+    // Если пинга нет, просто отвечаем на слово "бу"
+    const userMention = ctx.message.reply_to_message.from.username || ctx.message.reply_to_message.from.first_name;
+    ctx.reply(`@${userMention}, Бу! Испугался? Не бойся, я друг, я тебя не обижу. Иди сюда, иди ко мне, сядь рядом со мной, посмотри мне в глаза. Ты видишь меня? Я тоже тебя вижу. Давай смотреть друг на друга до тех пор, пока наши глаза не устанут. Ты не хочешь? Почему? Что-то не так?`, {
+      reply_to_message_id: ctx.message.message_id
+    });
+  } else {
+    ctx.reply(`Бу! Испугался? Не бойся, я друг, я тебя не обижу. Иди сюда, иди ко мне, сядь рядом со мной, посмотри мне в глаза. Ты видишь меня? Я тоже тебя вижу. Давай смотреть друг на друга до тех пор, пока наши глаза не устанут. Ты не хочешь? Почему? Что-то не так?`, {
+      reply_to_message_id: ctx.message.message_id
+    });
+  }
+});
+
+
+  
 function formatUptime(uptimeInSeconds) {
     const days = Math.floor(uptimeInSeconds / (3600 * 24));
     const hours = Math.floor((uptimeInSeconds % (3600 * 24)) / 3600);
@@ -57,7 +89,7 @@ bot.command('info', async (ctx) => {
     }
   });
 
-bot.command('avatar', async (ctx) => {
+  bot.command('avatar', async (ctx) => {
     let userId;
     let userName;
 
@@ -68,13 +100,19 @@ bot.command('avatar', async (ctx) => {
     }
     // Если есть упомянутый пользователь (через @username), получаем ID пользователя
     else if (ctx.message.entities) {
-        const mention = ctx.message.entities.find(entity => entity.type === 'mention');
-        if (mention) {
-            const mentionedUsername = ctx.message.text.slice(mention.offset + 1, mention.offset + mention.length);
-            const user = await ctx.telegram.getChatMember(ctx.chat.id, `@${mentionedUsername}`);
-            if (user) {
-                userId = user.user.id;
-                userName = user.user.username || user.user.first_name;
+        // Ищем все упоминания и обрабатываем их
+        const mentions = ctx.message.entities.filter(entity => entity.type === 'mention');
+        if (mentions.length > 0) {
+            const mentionedUsername = ctx.message.text.slice(mentions[0].offset + 1, mentions[0].offset + mentions[0].length);
+            try {
+                const user = await ctx.telegram.getChatMember(ctx.chat.id, `@${mentionedUsername}`);
+                if (user) {
+                    userId = user.user.id;
+                    userName = user.user.username || user.user.first_name;
+                }
+            } catch (error) {
+                console.error("Ошибка при получении пользователя по упоминанию:", error);
+                return ctx.reply(`Не удалось найти пользователя с именем @${mentionedUsername}.`, { reply_to_message_id: ctx.message.message_id });
             }
         }
     }
@@ -96,13 +134,14 @@ bot.command('avatar', async (ctx) => {
             });
         } else {
             // Если аватара нет
-            ctx.reply(`У пользователя ${userName} нет аватара.`);
+            ctx.reply(`У пользователя ${userName} нет аватара.`, { reply_to_message_id: ctx.message.message_id });
         }
     } catch (error) {
         console.error("Ошибка при получении аватара:", error);
-        ctx.reply(`Не удалось получить аватар пользователя ${userName}.`);
+        ctx.reply(`Не удалось получить аватар пользователя ${userName}.`, { reply_to_message_id: ctx.message.message_id });
     }
 });
+
 
 
 // Команда для генерации случайного числа в диапазоне
@@ -141,10 +180,14 @@ bot.command('help', (ctx) => {
     /info - информация о боте
 <b>Активация сообщением:</b>
     hi - приветствие
+    бу - испугался?
 <b>Администрация бота:</b>
     /sendnews -({image link})(опционально) {text} - рассылка сообщений в телеграмм и дискорд канал
     `, { reply_to_message_id: ctx.message.message_id });
 });
+
+
+
 
 const channelId = '@ifydevnews';
 const discordWebhookUrl = 'https://discord.com/api/webhooks/1306859560966950942/WkhfJN14_PU3tZrWJnPkkcYwdbstF9FgY3j0Iz6l4L4X3jz95xFIGHPIrA1sBvsKdoVi';
