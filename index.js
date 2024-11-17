@@ -84,10 +84,8 @@ bot.command('boo', async (ctx) => {  // Реагирует только на к�
 
 
 
-// Папка для хранения сообщений пользователей
+// Убедимся, что папка для сообщений существует
 const messagesDir = path.join(__dirname, 'messages');
-
-// Убедимся, что папка существует
 if (!fs.existsSync(messagesDir)) {
   fs.mkdirSync(messagesDir);
 }
@@ -107,9 +105,9 @@ bot.command('ask', async (ctx) => {
   const conversation = await getUserMessages(userId);
 
   // Проверка на количество сообщений
-  if (conversation.length / 2 >= config.maxMessagesPerUser) {  // Каждое сообщение пользователя и бота занимает 2 места
+  if (conversation.length / 2 >= 100) {  // Каждое сообщение пользователя и бота занимает 2 места
     // Если сообщений больше, чем лимит, удаляем пары (пользователь + бот) с конца
-    while (conversation.length / 2 >= config.maxMessagesPerUser) {
+    while (conversation.length / 2 >= 100) {
       conversation.shift();  // Удаляем пару сообщений: сначала пользователя, потом бот
       conversation.shift();
     }
@@ -118,45 +116,93 @@ bot.command('ask', async (ctx) => {
   // Добавляем новое сообщение пользователя в историю
   conversation.push({ role: 'user', content: userMessage });
 
-  // Сохраняем обновлённую историю сообщений в файл
-  await saveUserMessages(userId, conversation);
+  // Сохраняем обновлённую историю сообщений в файл (не затрагиваем модель)
+  await saveUserMessagesWithoutModel(userId, conversation);
 
   try {
-    // Отправляем запрос в Groq API с учётом контекста
-    const chatCompletion = await getGroqChatCompletion(conversation);
-    const aiResponse = chatCompletion; // Ответ ИИ
+    // Получаем текущую модель для пользователя
+    const model = await getUserModel(userId);
+
+    // Отправляем запрос в Groq API с учётом контекста и модели
+    const aiResponse = await getGroqChatCompletion(conversation, model);
 
     // Добавляем ответ бота в историю
     conversation.push({ role: 'assistant', content: aiResponse });
 
-    // Сохраняем обновленную историю сообщений в файл
-    await saveUserMessages(userId, conversation);
+    // Сохраняем обновленную историю сообщений в файл (не затрагиваем модель)
+    await saveUserMessagesWithoutModel(userId, conversation);
 
-    // Отправляем ответ пользователю, отвечая на его сообщение
+    // Отправляем ответ пользователю
     ctx.reply(aiResponse, { reply_to_message_id: ctx.message.message_id });
   } catch (error) {
     console.error('Ошибка при получении ответа от Groq:', error);
-    ctx.reply('Произошла ошибка при обработке запроса. Попробуйте снова позже.', {
-      reply_to_message_id: ctx.message.message_id, // Указываем, на какое сообщение отвечаем
-    });
+    ctx.reply('Произошла ошибка при обработке запроса. Попробуйте снова позже.');
   }
 });
 
-// Обработчик команды /reset
+// Обработчик команды /model (смена модели)
+bot.command('model', async (ctx) => {
+  const userId = String(ctx.from.id);
+  const userFilePath = path.join(messagesDir, `${userId}.js`);
+
+  // Проверяем, существует ли файл с историей сообщений пользователя
+  if (fs.existsSync(userFilePath)) {
+    // Получаем данные пользователя
+    const data = await fs.promises.readFile(userFilePath, 'utf8');
+    const userData = JSON.parse(data);
+
+    // Получаем текущую модель пользователя, если она есть
+    const currentModel = userData.model || 'llama3-8b-8192';  // По умолчанию используем модель для общения
+
+    // Переключаем модель на противоположную
+    const newModel = currentModel === 'llama3-8b-8192' 
+      ? 'llama3-groq-70b-8192-tool-use-preview' 
+      : 'llama3-8b-8192';
+
+    // Сохраняем новую модель в файл, не трогая историю сообщений
+    userData.model = newModel;
+
+    // Сохраняем обновлённую информацию с моделью
+    await fs.promises.writeFile(userFilePath, JSON.stringify(userData, null, 2));
+
+    // Ответ пользователю с описанием модели
+    const modelDescription = newModel === 'llama3-8b-8192' 
+      ? 'Базовая модель — Модель для общения' 
+      : 'Вторая модель — Модель для умных запросов';
+
+    ctx.reply(`Модель была изменена на: ${newModel}\n${modelDescription}`);
+  } else {
+    // Если файла нет, создаем новый с моделью для общения по умолчанию
+    const userData = {
+      conversation: [],
+      model: 'llama3-8b-8192', // Устанавливаем модель для общения по умолчанию
+    };
+
+    await fs.promises.writeFile(userFilePath, JSON.stringify(userData, null, 2));
+
+    ctx.reply('Ваш файл истории сообщений был создан, и модель установлена на: Модель для общения.');
+  }
+});
+
+// Обработчик команды /reset (сброс истории сообщений)
 bot.command('reset', async (ctx) => {
   const userId = String(ctx.from.id);
   const userFilePath = path.join(messagesDir, `${userId}.js`);
 
   // Проверяем, существует ли файл с историей сообщений пользователя
   if (fs.existsSync(userFilePath)) {
-    await fs.promises.unlink(userFilePath); // Удаляем файл
-    ctx.reply('Ваша история сообщений была очищена.', {
-      reply_to_message_id: ctx.message.message_id, // Указываем, на какое сообщение отвечаем
-    });
+    const data = await fs.promises.readFile(userFilePath, 'utf8');
+    const userData = JSON.parse(data);
+
+    // Сохраняем только модель и очищаем историю сообщений
+    userData.conversation = [];
+
+    // Сохраняем обновлённый файл без истории сообщений
+    await fs.promises.writeFile(userFilePath, JSON.stringify(userData, null, 2));
+
+    ctx.reply('Ваша история сообщений была очищена, но модель сохранена.');
   } else {
-    ctx.reply('Ваша история сообщений уже пуста.', {
-      reply_to_message_id: ctx.message.message_id, // Указываем, на какое сообщение отвечаем
-    });
+    ctx.reply('Ваша история сообщений уже пуста.');
   }
 });
 
@@ -173,19 +219,42 @@ async function getUserMessages(userId) {
   return [];
 }
 
-// Функция для сохранения сообщений пользователя и ответов ИИ в файл
-async function saveUserMessages(userId, conversation) {
+// Функция для сохранения сообщений пользователя в файл (без изменения модели)
+async function saveUserMessagesWithoutModel(userId, conversation) {
   const userFilePath = path.join(messagesDir, `${userId}.js`);
-  const data = { conversation };
+
+  // Получаем текущую модель из файла
+  const userData = await getUserData(userId);
+  
+  // Сохраняем только историю сообщений, модель не меняем
+  const data = { conversation, model: userData.model };
   await fs.promises.writeFile(userFilePath, JSON.stringify(data, null, 2));
 }
 
-// Функция для запроса к Groq API с учётом истории сообщений
-async function getGroqChatCompletion(conversation) {
+// Функция для получения данных пользователя (включая модель)
+async function getUserData(userId) {
+  const userFilePath = path.join(messagesDir, `${userId}.js`);
+
+  if (fs.existsSync(userFilePath)) {
+    const data = await fs.promises.readFile(userFilePath, 'utf8');
+    return JSON.parse(data);
+  }
+
+  return { model: 'llama3-8b-8192', conversation: [] }; // Если файла нет, модель по умолчанию для общения
+}
+
+// Функция для получения модели пользователя
+async function getUserModel(userId) {
+  const userData = await getUserData(userId);
+  return userData.model || 'llama3-8b-8192';  // Возвращаем модель, если она есть
+}
+
+// Функция для запроса к Groq API с учётом выбранной модели
+async function getGroqChatCompletion(conversation, model) {
   try {
     const response = await groq.chat.completions.create({
       messages: conversation,
-      model: 'llama3-groq-70b-8192-tool-use-preview', // Обновленная модель
+      model: model, // Используем модель, выбранную пользователем
     });
 
     return response.choices[0]?.message?.content || 'Ответ не получен.';
@@ -194,7 +263,6 @@ async function getGroqChatCompletion(conversation) {
     return 'Ошибка при запросе к серверу. Попробуйте снова позже.';
   }
 }
-
 
 
 
