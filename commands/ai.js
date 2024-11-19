@@ -1,8 +1,14 @@
-const path = require('path');
+require('dotenv').config();
 const config = require('../config');
-const fs = require('fs');
+const process = require('process'); 
 const Groq = require('groq-sdk');
+const fs = require('fs');
+const path = require('path');
+
+
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+
 require('dotenv').config();
 const { registerCommand, registerTextCommand, getCommands, getTextCommands } = require('../modules/commandHelper');
 module.exports = (bot) => {

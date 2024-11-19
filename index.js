@@ -43,7 +43,7 @@ registerTextCommand(bot, 'hi', 'hi', 'Поприветствовать.', async 
 
 
 registerCommand(bot, 'help', 'Показать список доступных команд.', async (ctx) => {
-    let helpMessage = 'Доступные команды:\n\n';
+    let helpMessage = 'Доступные команды:\n';
 
     const commandsList = getCommands();
     commandsList.forEach(({ command, description }) => {
