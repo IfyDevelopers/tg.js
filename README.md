@@ -1,7 +1,8 @@
 `.env`
 ```
-TOKEN="not token"
-GROQ_API_KEY="ai token"
+TOKEN="bot token"
+GROQ_API_KEY="GROQ token"
+WEBHOOK="discord webhook"
 ```
 `Bot Start`
 ```
