@@ -429,7 +429,7 @@ bot.command('help', async (ctx) => {
 
 
 const channelId = '@ifydevnews';
-const discordWebhookUrl = 'https://discord.com/api/webhooks/1306859560966950942/WkhfJN14_PU3tZrWJnPkkcYwdbstF9FgY3j0Iz6l4L4X3jz95xFIGHPIrA1sBvsKdoVi';
+const discordWebhookUrl = process.env.WEBHOOK;
 
 
 // Функция для отправки сообщения на Discord
